@@ -1,0 +1,1229 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Ernährungstagebuch</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Tagebuch">
+<meta name="theme-color" content="#eef3f0" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1815" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
+<style>
+html { color-scheme: light; -webkit-text-size-adjust: 100%; }
+body { margin: 0; }
+[hidden] { display: none !important; }
+
+  /* Layout: einspaltige Handy-App mit fester Tab-Leiste unten, Tagesansicht als Timeline,
+     Eingabe in einem Bottom-Sheet. Grün steht für Essen, Beere für Beschwerden, Violett für Einflussfaktoren. */
+  :root {
+    --bg: #eef3f0;
+    --surface: #ffffff;
+    --surface-2: #e4ece8;
+    --ink: #17261f;
+    --muted: #5d6f67;
+    --line: #d4dfd9;
+    --accent: #1b7a5a;
+    --on-accent: #ffffff;
+    --symptom: #b8324d;
+    --symptom-soft: #f8e3e8;
+    --factor: #6b4fb3;
+    --ok: #2c8a5f;
+    --warn: #c47a12;
+    --bad: #b8324d;
+    --cat-breakfast: #b7791f;
+    --cat-lunch: #2c8a5f;
+    --cat-dinner: #4a5bd0;
+    --cat-coffee: #8a5a3a;
+    --cat-snack: #16808f;
+    --shadow: 0 8px 28px rgba(23, 38, 31, .18);
+    --font-display: ui-rounded, "SF Pro Rounded", -apple-system, "Helvetica Neue", system-ui, sans-serif;
+    --font-body: -apple-system, "SF Pro Text", "Helvetica Neue", system-ui, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f1815; --surface: #17231f; --surface-2: #223029; --ink: #e5efea; --muted: #94a89f;
+      --line: #2a3a33; --accent: #4cc39a; --on-accent: #0b1611; --symptom: #f0728a; --symptom-soft: #3a1f27;
+      --factor: #b79cf0;
+      --ok: #4cc39a; --warn: #e5a23c; --bad: #f0728a;
+      --cat-breakfast: #e2a94a; --cat-lunch: #4cc39a; --cat-dinner: #8c9bff; --cat-coffee: #c9986f; --cat-snack: #4fc0d0;
+      --shadow: 0 8px 28px rgba(0, 0, 0, .5);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f1815; --surface: #17231f; --surface-2: #223029; --ink: #e5efea; --muted: #94a89f;
+    --line: #2a3a33; --accent: #4cc39a; --on-accent: #0b1611; --symptom: #f0728a; --symptom-soft: #3a1f27;
+    --factor: #b79cf0;
+    --ok: #4cc39a; --warn: #e5a23c; --bad: #f0728a;
+    --cat-breakfast: #e2a94a; --cat-lunch: #4cc39a; --cat-dinner: #8c9bff; --cat-coffee: #c9986f; --cat-snack: #4fc0d0;
+    --shadow: 0 8px 28px rgba(0, 0, 0, .5);
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font: 400 16px/1.45 var(--font-body);
+    padding-inline: 16px;
+    padding-block: 0 96px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .wrap { max-width: 640px; margin-inline: auto; }
+
+  /* Kopfzeile */
+  .top {
+    position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+    background: var(--bg);
+    padding-block: 14px 10px;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  }
+  h1 { font: 700 26px/1.1 var(--font-display); letter-spacing: -.01em; margin: 0; text-wrap: balance; }
+  h2 { font: 600 13px/1.2 var(--font-body); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin: 0 0 8px; }
+  .daynav { display: flex; align-items: center; gap: 4px; }
+  .icon-btn {
+    width: 40px; height: 40px; border-radius: 12px; border: 1px solid var(--line);
+    background: var(--surface); display: grid; place-items: center; padding: 0;
+  }
+  .icon-btn svg { width: 20px; height: 20px; }
+  .daylabel {
+    position: relative; min-width: 128px; text-align: center; font-weight: 600; font-size: 15px;
+    padding: 9px 8px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface);
+  }
+  .daylabel input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; }
+
+  /* Karten und Zeilen */
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+  .stack { display: flex; flex-direction: column; gap: 20px; }
+  .entry {
+    display: grid; grid-template-columns: 14px 1fr auto; gap: 12px; align-items: start;
+    width: 100%; text-align: left; background: none; border: 0; padding: 14px 16px;
+    border-bottom: 1px solid var(--line);
+  }
+  .entry:last-child { border-bottom: 0; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; margin-top: 6px; background: var(--c, var(--accent)); }
+  .dot.sym { border-radius: 3px; transform: rotate(45deg); background: var(--symptom); }
+  .dot.fac { background: transparent; border: 3px solid var(--factor); }
+  .entry .t { font-weight: 600; }
+  .entry .sub { color: var(--ink); overflow-wrap: anywhere; }
+  .entry .note { color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
+  .entry .time { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; padding-top: 2px; }
+  .entry.sym-row { background: var(--symptom-soft); }
+  .empty { padding: 36px 20px; text-align: center; color: var(--muted); }
+  .empty strong { display: block; color: var(--ink); font: 600 18px var(--font-display); margin-bottom: 6px; }
+
+  /* Chips */
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    border: 1px solid transparent; border-radius: 999px; padding: 8px 14px; font-size: 15px;
+    background: color-mix(in srgb, var(--c, var(--accent)) 14%, var(--surface));
+    color: var(--c, var(--accent)); font-weight: 500; display: inline-flex; gap: 6px; align-items: center;
+  }
+  .chip[aria-pressed="true"] { background: var(--c, var(--accent)); color: #fff; }
+  .chip.plain { background: var(--surface-2); color: var(--ink); }
+  .chip.sel { background: var(--accent); color: var(--on-accent); }
+  .chip.sym { --c: var(--symptom); }
+  .chip.fac { --c: var(--factor); }
+
+  /* Tab-Leiste und Plus */
+  .tabs {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 6;
+    background: var(--surface); border-top: 1px solid var(--line);
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
+  }
+  .tabs .in { max-width: 640px; margin-inline: auto; display: grid; grid-template-columns: repeat(4, 1fr); }
+  .tab { background: none; border: 0; padding: 6px 4px; display: flex; flex-direction: column; align-items: center; gap: 2px; color: var(--muted); font-size: 12px; font-weight: 500; }
+  .tab svg { width: 24px; height: 24px; }
+  .tab[aria-current="page"] { color: var(--accent); }
+  svg.ic { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .fab {
+    position: fixed; z-index: 7; right: max(16px, calc(50% - 304px)); bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+    width: 58px; height: 58px; border-radius: 50%; border: 0; background: var(--accent); color: var(--on-accent);
+    box-shadow: var(--shadow); display: grid; place-items: center;
+  }
+  .fab svg { width: 28px; height: 28px; stroke-width: 2.4; }
+
+  /* Sheet */
+  .scrim { position: fixed; inset: 0; z-index: 20; background: rgba(8, 16, 12, .5); display: flex; align-items: flex-end; justify-content: center; }
+  .sheet {
+    width: 100%; max-width: 640px; max-height: 92%; overflow-y: auto; background: var(--bg);
+    border-radius: 22px 22px 0 0; padding: 18px 16px calc(20px + env(safe-area-inset-bottom, 0px));
+    display: flex; flex-direction: column; gap: 18px; box-shadow: var(--shadow);
+  }
+  .sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .sheet-head h1 { font-size: 21px; }
+  .link { background: none; border: 0; color: var(--accent); font-weight: 600; padding: 8px 4px; }
+  .field { display: flex; flex-direction: column; gap: 8px; }
+  .field > label, .field > .lab { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  input[type=text], input[type=number], input[type=time], input[type=datetime-local], input[type=date], select, textarea {
+    width: 100%; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 11px 12px; min-height: 44px;
+  }
+  textarea { resize: vertical; min-height: 64px; }
+  .row2 { display: flex; gap: 8px; }
+  .row2 > input { flex: 1; min-width: 0; }
+  .btn { border: 0; border-radius: 14px; padding: 13px 16px; font-weight: 600; background: var(--accent); color: var(--on-accent); }
+  .btn.ghost { background: var(--surface); color: var(--ink); border: 1px solid var(--line); }
+  .btn.danger { background: var(--symptom-soft); color: var(--symptom); }
+  .btn[disabled] { opacity: .4; }
+  .btn.block { width: 100%; }
+  .choose { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .choose button { padding: 20px 6px; border-radius: 16px; border: 1px solid var(--line); background: var(--surface); font: 600 16px var(--font-display); display: flex; flex-direction: column; gap: 8px; align-items: center; min-width: 0; }
+  .seg { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+  .seg button { border: 1px solid var(--line); background: var(--surface); border-radius: 12px; padding: 12px 0; font-weight: 600; }
+  .seg button[aria-pressed="true"] { background: var(--symptom); border-color: var(--symptom); color: #fff; }
+  .seg.neutral button[aria-pressed="true"] { background: var(--factor); border-color: var(--factor); }
+  .tog { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .tog button { border: 1px solid var(--line); background: var(--surface); border-radius: 12px; padding: 10px 6px; font-weight: 600; }
+  .tog button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  .hint { color: var(--muted); font-size: 14px; }
+  .recent { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; width: 100%; text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 11px 14px; }
+  .recent .r-main { min-width: 0; overflow-wrap: anywhere; }
+  .recent .r-main small { display: block; color: var(--muted); font-size: 13px; }
+  .recent .r-go { color: var(--accent); font-weight: 600; font-size: 14px; }
+
+  /* Auswertung */
+  .controls { padding: 14px 16px; display: flex; flex-direction: column; gap: 14px; }
+  .stepper { display: flex; align-items: center; gap: 12px; justify-content: space-between; }
+  .stepper .val { display: flex; align-items: center; gap: 10px; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .stat { padding: 14px 16px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+  .stat:last-child { border-bottom: 0; }
+  .stat .head { display: flex; justify-content: space-between; gap: 12px; font-weight: 600; }
+  .stat .head span:first-child { min-width: 0; overflow-wrap: anywhere; }
+  .stat .pct { font-variant-numeric: tabular-nums; color: var(--c); white-space: nowrap; }
+  .bar { height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+  .bar span { display: block; height: 100%; background: var(--c); border-radius: 4px; }
+  .stat .meta { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 14px; }
+  .kv { display: flex; justify-content: space-between; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  .kv:last-child { border-bottom: 0; }
+  .kv b { font-variant-numeric: tabular-nums; }
+  .notice { font-size: 14px; color: var(--muted); padding-inline: 4px; }
+  .banner { background: var(--surface-2); border-radius: 12px; padding: 10px 14px; font-size: 14px; color: var(--muted); }
+  .toast { position: fixed; z-index: 30; left: 50%; transform: translateX(-50%); bottom: calc(92px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); border-radius: 12px; padding: 10px 16px; font-size: 14px; max-width: 90%; }
+  .toast-btn { background: none; border: 0; color: inherit; font-weight: 700; text-decoration: underline; padding: 0 0 0 8px; }
+
+  /* Verlaufskurve */
+  .chart { padding: 12px 12px 8px; }
+  .chart svg { display: block; width: 100%; height: auto; }
+  .chart .ax { fill: var(--muted); font: 500 10px var(--font-body); }
+  .chart .grid { stroke: var(--line); stroke-width: 1; }
+  .chart .base { stroke: var(--muted); stroke-width: 1; }
+  .chart .bar-s { fill: var(--symptom); }
+  .chart .sel { fill: var(--surface-2); }
+  .chart .hit { fill: transparent; cursor: pointer; }
+  .chart-detail { padding: 6px 4px 4px; font-size: 14px; min-height: 40px; }
+  details.tbl { padding: 4px 4px 8px; font-size: 14px; }
+  details.tbl summary { cursor: pointer; color: var(--accent); font-weight: 600; padding: 6px 0; }
+  details.tbl table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  details.tbl td { padding: 4px 0; border-bottom: 1px solid var(--line); }
+  details.tbl td:last-child { text-align: right; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .sheet { animation: up .22s ease-out; }
+    @keyframes up { from { transform: translateY(24px); opacity: .6; } to { transform: none; opacity: 1; } }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top" id="top"></header>
+  <main id="view"></main>
+</div>
+<nav class="tabs" aria-label="Hauptnavigation"><div class="in" id="tabs"></div></nav>
+<button class="fab" id="fab" aria-label="Neuen Eintrag anlegen">
+  <svg class="ic" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+</button>
+<div id="overlay"></div>
+<div id="toast" class="toast" hidden></div>
+<input type="file" id="imp" accept=".json,application/json" hidden>
+
+<script>
+// <pure>
+const CATS = [
+  { id: 'breakfast', title: 'Frühstück', color: 'var(--cat-breakfast)' },
+  { id: 'lunch', title: 'Mittagessen', color: 'var(--cat-lunch)' },
+  { id: 'dinner', title: 'Abendessen', color: 'var(--cat-dinner)' },
+  { id: 'coffee', title: 'Kaffee & Kuchen', color: 'var(--cat-coffee)' },
+  { id: 'snack', title: 'Snack', color: 'var(--cat-snack)' }
+];
+const SYMS = [
+  { id: 'stomachache', title: 'Bauchschmerzen' },
+  { id: 'cramps', title: 'Krämpfe' },
+  { id: 'bloating', title: 'Blähungen' },
+  { id: 'nausea', title: 'Übelkeit' },
+  { id: 'diarrhea', title: 'Durchfall' },
+  { id: 'other', title: 'Sonstiges' }
+];
+const FACTORS = [
+  { id: 'stress', title: 'Stress' },
+  { id: 'sleep', title: 'Schlaf' },
+  { id: 'med', title: 'Medikamente' },
+  { id: 'sport', title: 'Sport' },
+  { id: 'cycle', title: 'Zyklus' }
+];
+const CYCLE = ['Periode', 'Vor der Periode', 'Eisprung'];
+const SEVERITY = ['', 'sehr leicht', 'leicht', 'mittel', 'stark', 'sehr stark'];
+const STRESS = ['', 'sehr wenig', 'wenig', 'mittel', 'hoch', 'sehr hoch'];
+const HOUR = 3600 * 1000;
+
+const catOf = id => CATS.find(c => c.id === id) || CATS[4];
+const symOf = id => SYMS.find(s => s.id === id) || SYMS[5];
+const facOf = id => FACTORS.find(f => f.id === id) || FACTORS[0];
+
+function suggestCategory(ts) {
+  const h = new Date(ts).getHours();
+  if (h >= 5 && h < 10) return 'breakfast';
+  if (h >= 11 && h < 14) return 'lunch';
+  if (h >= 14 && h < 17) return 'coffee';
+  if (h >= 17 && h < 21) return 'dinner';
+  return 'snack';
+}
+
+function startOfDay(ts) { const d = new Date(ts); d.setHours(0, 0, 0, 0); return d.getTime(); }
+function sameDay(a, b) { return startOfDay(a) === startOfDay(b); }
+function pad(n) { return String(n).padStart(2, '0'); }
+function fmtDate(ts) { const d = new Date(ts); return pad(d.getDate()) + '.' + pad(d.getMonth() + 1) + '.' + d.getFullYear(); }
+function fmtShort(ts) { const d = new Date(ts); return pad(d.getDate()) + '.' + pad(d.getMonth() + 1) + '.'; }
+function fmtTime(ts) { const d = new Date(ts); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+function fmtNum(n, digits) { return (digits === undefined ? String(n) : Number(n).toFixed(digits)).replace('.', ','); }
+function longDay(ts) { return new Date(ts).toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }); }
+
+function factorLabel(e) {
+  switch (e.ftype) {
+    case 'stress': return 'Stärke ' + e.value + '/5, ' + (STRESS[e.value] || '');
+    case 'sleep': return fmtNum(e.value) + ' Std.';
+    case 'med': return e.text || '';
+    case 'sport': return (e.value ? e.value + ' Min.' : '') + (e.text ? (e.value ? ', ' : '') + e.text : '');
+    case 'cycle': return e.text || '';
+    default: return e.text || '';
+  }
+}
+
+// Gruppen, die eine Mahlzeit zur Auswertung beiträgt: einzelne Lebensmittel oder alle Paare darin.
+function mealGroups(meal, mode) {
+  const seen = new Map();
+  for (const f of meal.foods || []) { const k = f.toLowerCase(); if (!seen.has(k)) seen.set(k, f); }
+  const keys = [...seen.keys()].sort();
+  if (mode !== 'pair') return keys.map(k => ({ key: k, name: seen.get(k) }));
+  const out = [];
+  for (let i = 0; i < keys.length; i++) for (let j = i + 1; j < keys.length; j++) {
+    out.push({ key: keys[i] + '|' + keys[j], name: seen.get(keys[i]) + ' + ' + seen.get(keys[j]) });
+  }
+  return out;
+}
+
+function analyze(entries, windowMs, type, now, mode) {
+  const meals = entries.filter(e => e.kind === 'meal');
+  const symptoms = entries.filter(e => e.kind === 'symptom' && (!type || e.type === type));
+  const acc = new Map();
+  let evaluated = 0, evaluatedFollowed = 0;
+  for (const meal of meals) {
+    const end = meal.ts + windowMs;
+    if (end > now) continue; // Fenster noch offen
+    const hits = symptoms.filter(s => s.ts >= meal.ts && s.ts <= end);
+    const followed = hits.length > 0;
+    const maxSev = followed ? Math.max(...hits.map(h => h.severity || 0)) : 0;
+    evaluated++;
+    if (followed) evaluatedFollowed++;
+    for (const g of mealGroups(meal, mode)) {
+      const a = acc.get(g.key) || { food: g.name, eaten: 0, followed: 0, sev: 0 };
+      a.eaten++;
+      if (followed) { a.followed++; a.sev += maxSev; }
+      acc.set(g.key, a);
+    }
+  }
+  const stats = [...acc.values()].map(a => ({
+    food: a.food, eaten: a.eaten, followed: a.followed,
+    rate: a.eaten ? a.followed / a.eaten : 0,
+    avgSeverity: a.followed ? a.sev / a.followed : 0
+  })).sort((x, y) => y.rate - x.rate || y.eaten - x.eaten);
+  return { stats, baseline: evaluated ? evaluatedFollowed / evaluated : 0, mealCount: evaluated };
+}
+
+function dayList(fromTs, toTs) {
+  const out = [];
+  const d = new Date(startOfDay(fromTs));
+  const end = startOfDay(toTs);
+  while (d.getTime() <= end) { out.push(d.getTime()); d.setDate(d.getDate() + 1); }
+  return out;
+}
+
+// Pro Tag: stärkste Beschwerde (0 = keine) und die einzelnen Beschwerden.
+function dailySeries(entries, days, type) {
+  const map = new Map(days.map(d => [d, { day: d, max: 0, items: [] }]));
+  for (const e of entries) {
+    if (e.kind !== 'symptom' || (type && e.type !== type)) continue;
+    const r = map.get(startOfDay(e.ts));
+    if (r) { r.max = Math.max(r.max, e.severity || 0); r.items.push(e); }
+  }
+  return days.map(d => map.get(d));
+}
+
+// Vergleicht Tage mit und ohne Einflussfaktor: Anteil der Tage mit Beschwerden.
+function factorImpact(entries, type) {
+  const byDay = new Map();
+  const get = d => {
+    if (!byDay.has(d)) byDay.set(d, { tracked: false, sym: false, stress: false, sleep: false, med: false, sport: false, cycle: false });
+    return byDay.get(d);
+  };
+  for (const e of entries) {
+    const r = get(startOfDay(e.ts));
+    if (e.kind === 'meal') r.tracked = true;
+    else if (e.kind === 'symptom') { r.tracked = true; if (!type || e.type === type) r.sym = true; }
+    else if (e.kind === 'factor') {
+      if (e.ftype === 'stress' && e.value >= 4) r.stress = true;
+      else if (e.ftype === 'sleep' && e.value < 6) r.sleep = true;
+      else if (e.ftype === 'med') r.med = true;
+      else if (e.ftype === 'sport') r.sport = true;
+      else if (e.ftype === 'cycle') r.cycle = true;
+    }
+  }
+  const defs = [['stress', 'Hoher Stress (Stärke 4 bis 5)'], ['sleep', 'Wenig Schlaf (unter 6 Std.)'],
+    ['med', 'Medikamente genommen'], ['sport', 'Sport'], ['cycle', 'Zyklus-Eintrag']];
+  const tracked = [...byDay.values()].filter(r => r.tracked);
+  return defs.map(([k, label]) => {
+    const w = tracked.filter(r => r[k]), wo = tracked.filter(r => !r[k]);
+    const sw = w.filter(r => r.sym).length, swo = wo.filter(r => r.sym).length;
+    return { key: k, label, daysWith: w.length, symWith: sw, daysWithout: wo.length, symWithout: swo,
+      rateWith: w.length ? sw / w.length : 0, rateWithout: wo.length ? swo / wo.length : 0 };
+  }).filter(x => x.daysWith > 0);
+}
+
+function symptomSummary(entries, type) {
+  const syms = entries.filter(e => e.kind === 'symptom' && (!type || e.type === type));
+  const byType = SYMS.map(s => {
+    const l = syms.filter(e => e.type === s.id);
+    return { id: s.id, title: s.title, count: l.length, avg: l.length ? l.reduce((a, e) => a + e.severity, 0) / l.length : 0, max: l.length ? Math.max(...l.map(e => e.severity)) : 0 };
+  }).filter(x => x.count > 0).sort((a, b) => b.count - a.count);
+  const trackedDays = new Set(entries.filter(e => e.kind !== 'factor').map(e => startOfDay(e.ts))).size;
+  const symDays = new Set(syms.map(e => startOfDay(e.ts))).size;
+  return { total: syms.length, byType, trackedDays, symDays };
+}
+
+function rangeStart(days, now) {
+  if (!days) return 0;
+  return startOfDay(now) - (days - 1) * 24 * HOUR;
+}
+
+function csvEscape(v) { return '"' + String(v).replace(/"/g, '""') + '"'; }
+
+function buildCsv(entries) {
+  const lines = ['Datum;Uhrzeit;Art;Kategorie/Beschwerde;Inhalt;Stärke;Notiz'];
+  for (const e of entries) {
+    if (e.kind === 'meal') {
+      lines.push([fmtDate(e.ts), fmtTime(e.ts), 'Mahlzeit', csvEscape(catOf(e.category).title), csvEscape((e.foods || []).join(', ')), '', csvEscape(e.note || '')].join(';'));
+    } else if (e.kind === 'symptom') {
+      lines.push([fmtDate(e.ts), fmtTime(e.ts), 'Beschwerde', csvEscape(symOf(e.type).title), '', String(e.severity), csvEscape(e.note || '')].join(';'));
+    } else {
+      lines.push([fmtDate(e.ts), fmtTime(e.ts), 'Einflussfaktor', csvEscape(facOf(e.ftype).title), csvEscape(factorLabel(e)), '', csvEscape(e.note || '')].join(';'));
+    }
+  }
+  return '﻿' + lines.join('\n') + '\n';
+}
+
+function entryText(e) {
+  if (e.kind === 'meal') return fmtTime(e.ts) + '  ' + catOf(e.category).title + ': ' + (e.foods || []).join(', ') + (e.note ? ' (' + e.note + ')' : '');
+  if (e.kind === 'symptom') return fmtTime(e.ts) + '  BESCHWERDE ' + symOf(e.type).title + ', Stärke ' + e.severity + '/5' + (e.note ? ' (' + e.note + ')' : '');
+  return fmtTime(e.ts) + '  ' + facOf(e.ftype).title + ': ' + factorLabel(e) + (e.note ? ' (' + e.note + ')' : '');
+}
+
+function buildText(entries) {
+  const out = [];
+  let day = null;
+  for (const e of entries) {
+    const d = startOfDay(e.ts);
+    if (d !== day) { day = d; out.push('', longDay(d)); }
+    out.push(entryText(e));
+  }
+  return out.join('\n').trim();
+}
+
+function recentMeals(entries, limit) {
+  const seen = new Set(), out = [];
+  for (let i = entries.length - 1; i >= 0 && out.length < limit; i--) {
+    const e = entries[i];
+    if (e.kind !== 'meal') continue;
+    const key = e.category + '|' + (e.foods || []).map(f => f.toLowerCase()).sort().join(',');
+    if (seen.has(key)) continue;
+    seen.add(key); out.push(e);
+  }
+  return out;
+}
+// </pure>
+
+/* ---------- Zustand ---------- */
+function loadRemind() {
+  try { const r = JSON.parse(localStorage.getItem('et.remind') || 'null'); if (r && typeof r.min === 'number') return { on: !!r.on, min: r.min }; } catch (e) { /* ignorieren */ }
+  return { on: false, min: 20 * 60 + 30 };
+}
+function saveRemind() { try { localStorage.setItem('et.remind', JSON.stringify(state.remind)); } catch (e) { /* ignorieren */ } }
+
+const state = {
+  tab: 'today',
+  day: startOfDay(Date.now()),
+  entries: [],
+  loaded: false,
+  mode: 'local',        // 'cloud' oder 'local'
+  sheet: null,
+  win: 3,
+  symFilter: '',
+  minCount: 2,
+  combo: 'single',      // 'single' oder 'pair'
+  chartDays: 30,
+  chartSel: null,
+  exportDays: 30,
+  remind: loadRemind()
+};
+let store = null;
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const newId = () => 'e' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const num = v => { const s = String(v === null || v === undefined ? '' : v).trim().replace(',', '.'); const n = Number(s); return s !== '' && isFinite(n) ? n : null; };
+
+function toast(msg, action) {
+  const t = $('toast');
+  t.innerHTML = esc(msg) + (action ? ' <button class="toast-btn" id="toast-act">' + esc(action.label) + '</button>' : '');
+  t.hidden = false;
+  if (action) $('toast-act').onclick = () => { t.hidden = true; action.fn(); };
+  clearTimeout(toast.h);
+  toast.h = setTimeout(() => { t.hidden = true; }, action ? 5000 : 2600);
+}
+
+/* ---------- Speicher: claude.ai-Konto (privat) mit lokalem Ersatz ---------- */
+const LS_KEY = 'ernaehrungstagebuch.entries';
+function lsRead() { try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]'); } catch (e) { return []; } }
+function lsWrite(list) { try { localStorage.setItem(LS_KEY, JSON.stringify(list)); } catch (e) { /* ignorieren */ } }
+const KINDS = ['meal', 'symptom', 'factor'];
+
+function initStore() {
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* ignorieren */ }
+  useLocal();
+}
+
+function useLocal() {
+  state.mode = 'local';
+  state.entries = lsRead().sort((a, b) => a.ts - b.ts);
+  state.loaded = true;
+  store = {
+    save: async e => {
+      const list = lsRead().filter(x => x.id !== e.id); list.push(e); lsWrite(list);
+      state.entries = list.sort((a, b) => a.ts - b.ts); render();
+    },
+    remove: async id => {
+      const list = lsRead().filter(x => x.id !== id); lsWrite(list);
+      state.entries = list.sort((a, b) => a.ts - b.ts); render();
+    }
+  };
+  render();
+}
+
+async function saveEntry(entry) {
+  try { await store.save(entry); return true; }
+  catch (e) { toast('Speichern hat nicht geklappt. Bitte erneut versuchen.'); return false; }
+}
+async function removeEntry(id) {
+  try { await store.remove(id); return true; }
+  catch (e) { toast('Löschen hat nicht geklappt. Bitte erneut versuchen.'); return false; }
+}
+
+/* ---------- Darstellung ---------- */
+const ICONS = {
+  today: '<path d="M4 6h16M4 12h16M4 18h10"/>',
+  history: '<rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
+  analysis: '<path d="M5 20V11M12 20V5M19 20v-7"/>',
+  more: '<path d="M4 8h10M18 8h2M4 16h2M10 16h10"/><circle cx="16" cy="8" r="2"/><circle cx="8" cy="16" r="2"/>'
+};
+const TABS = [['today', 'Heute'], ['history', 'Verlauf'], ['analysis', 'Auswertung'], ['more', 'Mehr']];
+
+function dayLabel(ts) {
+  const today = startOfDay(Date.now());
+  if (ts === today) return 'Heute';
+  if (ts === today - 24 * HOUR) return 'Gestern';
+  return new Date(ts).toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'short' });
+}
+function dateInputValue(ts) { const d = new Date(ts); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+function dtLocal(ts) { return dateInputValue(ts) + 'T' + fmtTime(ts); }
+function minToTime(m) { return pad(Math.floor(m / 60)) + ':' + pad(m % 60); }
+
+function entryRow(e) {
+  if (e.kind === 'meal') {
+    const c = catOf(e.category);
+    return `<button class="entry" data-act="edit" data-id="${esc(e.id)}">
+      <span class="dot" style="--c:${c.color}"></span>
+      <span><span class="t">${esc(c.title)}</span><br><span class="sub">${esc((e.foods || []).join(', '))}</span>${e.note ? `<br><span class="note">${esc(e.note)}</span>` : ''}</span>
+      <span class="time">${fmtTime(e.ts)}</span></button>`;
+  }
+  if (e.kind === 'factor') {
+    return `<button class="entry" data-act="edit" data-id="${esc(e.id)}">
+      <span class="dot fac"></span>
+      <span><span class="t">${esc(facOf(e.ftype).title)}</span><br><span class="sub">${esc(factorLabel(e))}</span>${e.note ? `<br><span class="note">${esc(e.note)}</span>` : ''}</span>
+      <span class="time">${fmtTime(e.ts)}</span></button>`;
+  }
+  return `<button class="entry sym-row" data-act="edit" data-id="${esc(e.id)}">
+    <span class="dot sym"></span>
+    <span><span class="t">${esc(symOf(e.type).title)}</span><br><span class="sub">Stärke ${e.severity}/5, ${SEVERITY[e.severity] || ''}</span>${e.note ? `<br><span class="note">${esc(e.note)}</span>` : ''}</span>
+    <span class="time">${fmtTime(e.ts)}</span></button>`;
+}
+
+function renderTop() {
+  const titles = { today: 'Tagebuch', history: 'Verlauf', analysis: 'Auswertung', more: 'Mehr' };
+  if (state.tab === 'today') {
+    $('top').innerHTML = `<h1>${esc(titles.today)}</h1>
+      <div class="daynav">
+        <button class="icon-btn" data-act="prev" aria-label="Vorheriger Tag"><svg class="ic" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <div class="daylabel">${esc(dayLabel(state.day))}<input type="date" id="daypick" value="${dateInputValue(state.day)}" aria-label="Tag wählen"></div>
+        <button class="icon-btn" data-act="next" aria-label="Nächster Tag"><svg class="ic" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
+      </div>`;
+  } else {
+    $('top').innerHTML = `<h1>${esc(titles[state.tab])}</h1>`;
+  }
+}
+
+function reminderBanner() {
+  if (!state.remind.on || !sameDay(state.day, Date.now())) return '';
+  const n = new Date();
+  if (n.getHours() * 60 + n.getMinutes() < state.remind.min) return '';
+  if (state.entries.some(e => sameDay(e.ts, Date.now()))) return '';
+  return '<div class="banner" style="margin-bottom:12px">Du hast heute noch nichts eingetragen.</div>';
+}
+
+function viewToday() {
+  const items = state.entries.filter(e => sameDay(e.ts, state.day));
+  if (!state.loaded) return '<div class="empty">Einträge werden geladen …</div>';
+  const banner = reminderBanner();
+  if (!items.length) {
+    return banner + `<div class="card"><div class="empty"><strong>Noch nichts eingetragen</strong>Tippe auf das Plus, um eine Mahlzeit, eine Beschwerde oder einen Einflussfaktor für diesen Tag zu erfassen.</div></div>`;
+  }
+  return banner + `<div class="card">${items.map(entryRow).join('')}</div>`;
+}
+
+function viewHistory() {
+  if (!state.loaded) return '<div class="empty">Einträge werden geladen …</div>';
+  if (!state.entries.length) return `<div class="card"><div class="empty"><strong>Noch kein Verlauf</strong>Sobald du Einträge erfasst, erscheinen sie hier nach Tagen sortiert.</div></div>`;
+  const days = [...new Set(state.entries.map(e => startOfDay(e.ts)))].sort((a, b) => b - a);
+  return `<div class="stack">${days.map(d => `
+    <section><h2>${esc(longDay(d))}</h2>
+    <div class="card">${state.entries.filter(e => startOfDay(e.ts) === d).map(entryRow).join('')}</div></section>`).join('')}</div>`;
+}
+
+function hlColor(rate, base) {
+  if (rate > 0 && rate >= base + 0.2) return 'var(--bad)';
+  if (rate > 0 && rate >= base + 0.1) return 'var(--warn)';
+  return 'var(--ok)';
+}
+
+function chartSvg(series, sel) {
+  const W = 340, H = 168, L = 26, R = 6, T = 8, B = 24;
+  const pw = W - L - R, ph = H - T - B, n = series.length, slot = pw / n;
+  const bw = Math.max(2, Math.min(14, slot * 0.64));
+  const y = v => T + ph - (v / 5) * ph;
+  let g = '';
+  for (let v = 1; v <= 5; v++) g += `<line class="grid" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/>`;
+  for (const v of [1, 3, 5]) g += `<text class="ax" x="${L - 6}" y="${y(v) + 3}" text-anchor="end">${v}</text>`;
+  let bars = '';
+  series.forEach((s, i) => {
+    const x = L + i * slot;
+    if (sel === i) bars += `<rect class="sel" x="${x}" y="${T}" width="${slot}" height="${ph}"/>`;
+  });
+  series.forEach((s, i) => {
+    if (!s.max) return;
+    const x = L + i * slot + (slot - bw) / 2;
+    bars += `<rect class="bar-s" x="${x.toFixed(2)}" y="${y(s.max).toFixed(2)}" width="${bw.toFixed(2)}" height="${(T + ph - y(s.max)).toFixed(2)}" rx="${Math.min(3, bw / 2).toFixed(1)}"/>`;
+  });
+  const base = `<line class="base" x1="${L}" x2="${W - R}" y1="${T + ph}" y2="${T + ph}"/>`;
+  const labels = [[0, 'start'], [Math.floor((n - 1) / 2), 'middle'], [n - 1, 'end']]
+    .filter((p, i, a) => a.findIndex(q => q[0] === p[0]) === i)
+    .map(([i, anchor]) => {
+      const cx = L + i * slot + slot / 2;
+      const x = anchor === 'start' ? L : anchor === 'end' ? W - R : cx;
+      return `<text class="ax" x="${x}" y="${H - 6}" text-anchor="${anchor}">${fmtShort(series[i].day)}</text>`;
+    }).join('');
+  const hits = series.map((s, i) => `<rect class="hit" data-act="chartday" data-i="${i}" x="${L + i * slot}" y="${T}" width="${slot}" height="${ph + B}"/>`).join('');
+  const total = series.filter(s => s.max).length;
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Stärkste Beschwerde pro Tag, ${total} Tage mit Beschwerden in ${n} Tagen">${g}${bars}${base}${labels}${hits}</svg>`;
+}
+
+function chartDetail(series, sel) {
+  if (sel === null || !series[sel]) return '<span class="hint">Tippe auf einen Tag, um die Beschwerden zu sehen.</span>';
+  const s = series[sel];
+  const head = `<b>${esc(longDay(s.day))}</b><br>`;
+  if (!s.items.length) return head + 'Keine Beschwerden eingetragen.';
+  return head + s.items.sort((a, b) => a.ts - b.ts).map(e => `${fmtTime(e.ts)} ${esc(symOf(e.type).title)}, Stärke ${e.severity}`).join('<br>');
+}
+
+function viewAnalysis() {
+  const hasMeals = state.entries.some(e => e.kind === 'meal');
+  const hasSyms = state.entries.some(e => e.kind === 'symptom');
+  if (!hasMeals || !hasSyms) {
+    return `<div class="card"><div class="empty"><strong>Noch zu wenig Daten</strong>Für die Auswertung braucht es Mahlzeiten und Beschwerden. Je länger du trackst, desto aussagekräftiger wird sie.</div></div>`;
+  }
+  const now = Date.now();
+  const pair = state.combo === 'pair';
+  const r = analyze(state.entries, state.win * HOUR, state.symFilter, now, state.combo);
+  const vis = r.stats.filter(s => s.eaten >= state.minCount);
+  const rows = vis.length ? vis.map(s => {
+    const col = hlColor(s.rate, r.baseline);
+    const pct = Math.round(s.rate * 100);
+    return `<div class="stat" style="--c:${col}">
+      <div class="head"><span>${esc(s.food)}</span><span class="pct">${pct} %</span></div>
+      <div class="bar"><span style="width:${pct}%"></span></div>
+      <div class="meta"><span>${s.eaten}× ${pair ? 'zusammen ' : ''}gegessen, ${s.followed}× Beschwerden danach</span>${s.followed ? `<span>Ø Stärke ${fmtNum(s.avgSeverity, 1)}</span>` : ''}</div></div>`;
+  }).join('') : `<div class="empty">Noch ${pair ? 'keine Kombination' : 'kein Lebensmittel'} wurde ${state.minCount}× oder öfter erfasst.</div>`;
+
+  const days = dayList(rangeStart(state.chartDays, now), now);
+  const series = dailySeries(state.entries, days, state.symFilter);
+  const sel = state.chartSel !== null && state.chartSel < series.length ? state.chartSel : null;
+  const symDays = series.filter(s => s.max);
+  const table = symDays.length
+    ? `<details class="tbl"><summary>Als Tabelle anzeigen</summary><table><tbody>${symDays.slice().reverse().map(s => `<tr><td>${esc(fmtDate(s.day))}</td><td>${s.items.length}× Beschwerden</td><td>stärkste: ${s.max}/5</td></tr>`).join('')}</tbody></table></details>` : '';
+
+  const impact = factorImpact(state.entries, state.symFilter);
+  const impactRows = impact.length ? impact.map(x => {
+    const enough = x.daysWith >= 3;
+    const col = !enough ? 'var(--muted)' : x.rateWith >= x.rateWithout + 0.2 ? 'var(--bad)' : x.rateWith >= x.rateWithout + 0.1 ? 'var(--warn)' : 'var(--ok)';
+    const a = Math.round(x.rateWith * 100), b = Math.round(x.rateWithout * 100);
+    return `<div class="stat" style="--c:${col}">
+      <div class="head"><span>${esc(x.label)}</span><span class="pct">${a} %</span></div>
+      <div class="bar"><span style="width:${a}%"></span></div>
+      <div class="meta"><span>an ${x.daysWith} Tag${x.daysWith === 1 ? '' : 'en'}: ${x.symWith}× Beschwerden</span><span>sonst ${b} % (${x.daysWithout} Tage)</span></div>
+      ${enough ? '' : '<div class="meta"><span>Noch zu wenige Tage für einen Vergleich.</span></div>'}</div>`;
+  }).join('') : `<div class="empty">Trage Einflussfaktoren ein (Stress, Schlaf, Medikamente, Sport, Zyklus), dann siehst du hier, ob Beschwerden an solchen Tagen häufiger sind.</div>`;
+
+  return `<div class="stack">
+    <div class="card controls">
+      <div class="field"><label for="win">Beschwerden innerhalb von</label>
+        <select id="win">${[1, 2, 3, 4, 6, 12].map(h => `<option value="${h}"${h === state.win ? ' selected' : ''}>${h} Std. nach dem Essen</option>`).join('')}</select></div>
+      <div class="field"><label for="symf">Beschwerde</label>
+        <select id="symf"><option value="">Alle</option>${SYMS.map(s => `<option value="${s.id}"${s.id === state.symFilter ? ' selected' : ''}>${esc(s.title)}</option>`).join('')}</select></div>
+      <div class="stepper"><span>Mindestens so oft gegessen</span>
+        <span class="val"><button class="icon-btn" data-act="min-" aria-label="Weniger">−</button><span>${state.minCount}×</span><button class="icon-btn" data-act="min+" aria-label="Mehr">+</button></span></div>
+    </div>
+    <section><h2>Verlaufskurve</h2>
+      <div class="card"><div class="chart">
+        <div class="field" style="margin-bottom:8px"><label for="cr">Zeitraum</label>
+          <select id="cr">${[[14, 'Letzte 14 Tage'], [30, 'Letzte 30 Tage'], [90, 'Letzte 90 Tage']].map(([d, t]) => `<option value="${d}"${d === state.chartDays ? ' selected' : ''}>${t}</option>`).join('')}</select></div>
+        <div class="hint" style="margin-bottom:4px">Stärkste Beschwerde pro Tag (1 bis 5)</div>
+        ${chartSvg(series, sel)}
+        <div class="chart-detail" aria-live="polite">${chartDetail(series, sel)}</div>
+        ${table}
+      </div></div></section>
+    <section><h2>Überblick</h2><div class="card">
+      <div class="kv"><span>Ausgewertete Mahlzeiten</span><b>${r.mealCount}</b></div>
+      <div class="kv"><span>Davon mit Beschwerden danach</span><b>${Math.round(r.baseline * 100)} %</b></div></div>
+      <p class="notice">Dieser Wert ist die Vergleichsbasis. Lebensmittel deutlich darüber fallen auf.</p></section>
+    <section><h2>${pair ? 'Kombinationen' : 'Lebensmittel'}</h2>
+      <div class="tog" style="margin-bottom:10px" role="group" aria-label="Ansicht">
+        <button data-act="combo" data-m="single" aria-pressed="${!pair}">Einzeln</button>
+        <button data-act="combo" data-m="pair" aria-pressed="${pair}">Kombinationen</button></div>
+      <div class="card">${rows}</div>
+      <p class="notice">Das ist eine Statistik deiner Einträge und keine Diagnose. Da meist mehrere Lebensmittel in einer Mahlzeit stecken, kann ein Auslöser andere mitziehen. Kombinationen zeigen Paare, die in derselben Mahlzeit vorkamen. Besprich auffällige Muster mit deiner Ärztin oder deinem Arzt. Mahlzeiten, deren Zeitfenster noch läuft, zählen nicht mit.</p></section>
+    <section><h2>Einflussfaktoren</h2><div class="card">${impactRows}</div>
+      <p class="notice">Verglichen wird der Anteil der Tage mit Beschwerden an Tagen mit dem Faktor gegenüber allen anderen Tagen mit Einträgen. Ab etwa 3 Tagen wird der Vergleich aussagekräftiger.</p></section>
+  </div>`;
+}
+
+function viewMore() {
+  const meals = state.entries.filter(e => e.kind === 'meal').length;
+  const syms = state.entries.filter(e => e.kind === 'symptom').length;
+  const facs = state.entries.filter(e => e.kind === 'factor').length;
+  const ranges = [[7, 'Letzte 7 Tage'], [14, 'Letzte 14 Tage'], [30, 'Letzte 30 Tage'], [90, 'Letzte 90 Tage'], [0, 'Alles']];
+  return `<div class="stack">
+    <section><h2>Erinnerung</h2><div class="card controls">
+      <div class="stepper"><label for="rem-on">Hinweis, wenn heute noch nichts eingetragen ist</label>
+        <input type="checkbox" id="rem-on" ${state.remind.on ? 'checked' : ''} style="width:22px;height:22px"></div>
+      <div class="field"><label for="rem-time">Ab Uhrzeit</label><input type="time" id="rem-time" value="${minToTime(state.remind.min)}"></div>
+      <p class="hint" style="margin:0">Der Hinweis erscheint beim Öffnen der App. Eine Benachrichtigung auf den Sperrbildschirm ist für eine Webseite auf dem iPhone nicht möglich. Dafür legst du in der iPhone-App „Erinnerungen“ oder „Uhr“ einmal eine tägliche Erinnerung an.</p>
+    </div></section>
+    <section><h2>Arztbericht und Export</h2><div class="card controls">
+      <div class="field"><label for="exr">Zeitraum</label>
+        <select id="exr">${ranges.map(([d, t]) => `<option value="${d}"${d === state.exportDays ? ' selected' : ''}>${t}</option>`).join('')}</select></div>
+      <button class="btn block" data-act="pdf">Arztbericht als PDF speichern</button>
+      <button class="btn ghost block" data-act="csv">Als CSV speichern (Excel)</button>
+      <button class="btn ghost block" data-act="copy">Als Text kopieren</button>
+      <p class="hint" style="margin:0">Der Bericht enthält eine Zusammenfassung, die Verlaufskurve, auffällige Lebensmittel und Kombinationen, Einflussfaktoren und das vollständige Tagesprotokoll.</p>
+    </div></section>
+    <section><h2>Daten</h2><div class="card">
+      <div class="kv"><span>Mahlzeiten</span><b>${meals}</b></div>
+      <div class="kv"><span>Beschwerden</span><b>${syms}</b></div>
+      <div class="kv"><span>Einflussfaktoren</span><b>${facs}</b></div></div></section>
+    <section><h2>Datensicherung</h2><div class="card controls">
+      <button class="btn ghost block" data-act="backup">Sicherung speichern (JSON)</button>
+      <button class="btn ghost block" data-act="restore">Sicherung einspielen</button>
+      <p class="hint" style="margin:0">Mit der Sicherung kannst du alle Einträge auf ein neues Gerät mitnehmen oder nach einem Löschen der App wiederherstellen.</p>
+    </div></section>
+    <div class="banner">Deine Einträge liegen nur auf diesem Gerät, in dieser App, und werden nirgends hochgeladen. Sichere sie regelmäßig. Wenn du die App vom Home-Bildschirm löschst oder die Safari-Daten entfernst, sind sie weg.</div>
+  </div>`;
+}
+
+function render() {
+  renderTop();
+  const views = { today: viewToday, history: viewHistory, analysis: viewAnalysis, more: viewMore };
+  const scroll = window.scrollY;
+  $('view').innerHTML = views[state.tab]();
+  window.scrollTo(0, scroll);
+  $('tabs').innerHTML = TABS.map(([id, t]) => `<button class="tab" data-act="tab" data-tab="${id}"${state.tab === id ? ' aria-current="page"' : ''}>
+    <svg class="ic" viewBox="0 0 24 24">${ICONS[id]}</svg><span>${t}</span></button>`).join('');
+  $('fab').hidden = !!state.sheet;
+}
+
+/* ---------- Sheet: Eingabe ---------- */
+function newEntryTs() {
+  return state.tab === 'today' && !sameDay(Date.now(), state.day) ? state.day + 12 * HOUR : Date.now();
+}
+function factorDefaults(f) {
+  return { stress: { value: 3, text: '' }, sleep: { value: 7, text: '' }, med: { value: null, text: '' },
+    sport: { value: 30, text: '' }, cycle: { value: null, text: CYCLE[0] } }[f];
+}
+
+function openSheet(kind, entry) {
+  const now = newEntryTs();
+  if (kind === 'choose') state.sheet = { kind };
+  else if (kind === 'meal') {
+    const ts = entry ? entry.ts : now;
+    state.sheet = { kind, id: entry ? entry.id : null, ts, category: entry ? entry.category : suggestCategory(ts),
+      foods: entry ? [...entry.foods] : [], note: entry ? entry.note || '' : '', input: '' };
+  } else if (kind === 'factor') {
+    const f = entry ? entry.ftype : 'stress';
+    const d = factorDefaults(f);
+    state.sheet = { kind, id: entry ? entry.id : null, ts: entry ? entry.ts : now, ftype: f,
+      value: entry ? entry.value : d.value, text: entry ? entry.text || '' : d.text, note: entry ? entry.note || '' : '' };
+  } else {
+    state.sheet = { kind, id: entry ? entry.id : null, ts: entry ? entry.ts : now,
+      type: entry ? entry.type : 'stomachache', severity: entry ? entry.severity : 3, note: entry ? entry.note || '' : '' };
+  }
+  renderSheet();
+}
+function closeSheet() { state.sheet = null; $('overlay').innerHTML = ''; render(); }
+
+function foodSuggestions(sh) {
+  const counts = new Map();
+  for (const e of state.entries) if (e.kind === 'meal') for (const f of e.foods || []) {
+    const k = f.toLowerCase(); const c = counts.get(k) || { name: f, n: 0 }; c.n++; counts.set(k, c);
+  }
+  const chosen = new Set(sh.foods.map(f => f.toLowerCase()));
+  const q = sh.input.trim().toLowerCase();
+  return [...counts.entries()].filter(([k]) => !chosen.has(k) && (!q || k.includes(q)))
+    .sort((a, b) => b[1].n - a[1].n).slice(0, 12).map(([, v]) => v.name);
+}
+
+function suggestionsHtml(sh) {
+  const s = foodSuggestions(sh);
+  if (!s.length) return '';
+  return `<div class="hint">Bisher verwendet</div><div class="chips">${s.map(f => `<button class="chip plain" data-act="addfood" data-food="${esc(f)}">${esc(f)}</button>`).join('')}</div>`;
+}
+
+function deleteButtons(sh) {
+  if (!sh.id) return '';
+  return sh.confirm ? `<button class="btn danger block" data-act="del-yes">Wirklich löschen</button>` : `<button class="btn danger block" data-act="del">Eintrag löschen</button>`;
+}
+
+function factorFields(sh) {
+  switch (sh.ftype) {
+    case 'stress':
+      return `<div class="field"><span class="lab">Stress (1 = sehr wenig, 5 = sehr hoch)</span>
+        <div class="seg neutral">${[1, 2, 3, 4, 5].map(n => `<button data-act="fval" data-n="${n}" aria-pressed="${sh.value === n}">${n}</button>`).join('')}</div>
+        <div class="hint">${STRESS[sh.value] || ''}</div></div>`;
+    case 'sleep':
+      return `<div class="field"><label for="fval">Schlafdauer (Stunden)</label><input type="number" id="fval" inputmode="decimal" step="0.5" min="0" max="24" value="${sh.value === null ? '' : sh.value}"></div>`;
+    case 'med':
+      return `<div class="field"><label for="ftext">Medikament und Dosis</label><input type="text" id="ftext" placeholder="z. B. Ibuprofen 400 mg" value="${esc(sh.text)}" autocomplete="off"></div>`;
+    case 'sport':
+      return `<div class="field"><label for="fval">Dauer (Minuten)</label><input type="number" id="fval" inputmode="numeric" step="5" min="0" max="600" value="${sh.value === null ? '' : sh.value}"></div>
+        <div class="field"><label for="ftext">Art (optional)</label><input type="text" id="ftext" placeholder="z. B. Joggen" value="${esc(sh.text)}" autocomplete="off"></div>`;
+    default:
+      return `<div class="field"><span class="lab">Phase</span><div class="chips">${CYCLE.map(c => `<button class="chip fac" data-act="cyc" data-c="${esc(c)}" aria-pressed="${sh.text === c}">${esc(c)}</button>`).join('')}</div></div>`;
+  }
+}
+
+function renderSheet() {
+  const sh = state.sheet;
+  if (!sh) return;
+  let inner = '';
+  if (sh.kind === 'choose') {
+    const recent = recentMeals(state.entries, 5);
+    inner = `<div class="sheet-head"><h1>Neuer Eintrag</h1><button class="link" data-act="close">Abbrechen</button></div>
+      <div class="choose">
+        <button data-act="new-meal"><span class="dot" style="--c:var(--accent);width:16px;height:16px;margin:0"></span>Mahlzeit</button>
+        <button data-act="new-sym"><span class="dot sym" style="width:16px;height:16px;margin:0"></span>Beschwerde</button>
+        <button data-act="new-fac"><span class="dot fac" style="width:16px;height:16px;margin:0"></span>Faktor</button>
+      </div>
+      <div class="hint">Faktor: Stress, Schlaf, Medikamente, Sport oder Zyklus</div>
+      ${recent.length ? `<div class="field"><span class="lab">Zuletzt gegessen, mit einem Tipp erneut eintragen</span>
+        ${recent.map(m => `<button class="recent" data-act="repeat" data-id="${esc(m.id)}"><span class="r-main">${esc((m.foods || []).join(', '))}<small>${esc(catOf(m.category).title)}</small></span><span class="r-go">Nochmal</span></button>`).join('')}</div>` : ''}`;
+  } else if (sh.kind === 'meal') {
+    inner = `<div class="sheet-head"><h1>${sh.id ? 'Mahlzeit bearbeiten' : 'Neue Mahlzeit'}</h1><button class="link" data-act="close">Abbrechen</button></div>
+      <div class="field"><span class="lab">Art der Mahlzeit</span>
+        <div class="chips">${CATS.map(c => `<button class="chip" style="--c:${c.color}" data-act="cat" data-cat="${c.id}" aria-pressed="${sh.category === c.id}">${esc(c.title)}</button>`).join('')}</div></div>
+      <div class="field"><label for="ts">Zeitpunkt</label><input type="datetime-local" id="ts" value="${dtLocal(sh.ts)}"></div>
+      <div class="field"><span class="lab">Was wurde gegessen oder getrunken?</span>
+        ${sh.foods.length ? `<div class="chips">${sh.foods.map(f => `<button class="chip sel" data-act="rmfood" data-food="${esc(f)}" aria-label="${esc(f)} entfernen">${esc(f)} <span aria-hidden="true">×</span></button>`).join('')}</div>` : ''}
+        <div class="row2"><input type="text" id="food-input" placeholder="z. B. Haferflocken, Milch" value="${esc(sh.input)}" autocomplete="off" enterkeyhint="done">
+          <button class="btn ghost" data-act="commit">Hinzufügen</button></div>
+        <div class="field" id="sugg">${suggestionsHtml(sh)}</div></div>
+      <div class="field"><label for="note">Notiz (optional)</label><textarea id="note" placeholder="z. B. Restaurant, Fertiggericht">${esc(sh.note)}</textarea></div>
+      <button class="btn block" data-act="save">Sichern</button>
+      ${sh.id ? `<button class="btn ghost block" data-act="repeat-this">Jetzt nochmal eintragen</button>` : ''}
+      ${deleteButtons(sh)}`;
+  } else if (sh.kind === 'factor') {
+    inner = `<div class="sheet-head"><h1>${sh.id ? 'Faktor bearbeiten' : 'Neuer Einflussfaktor'}</h1><button class="link" data-act="close">Abbrechen</button></div>
+      <div class="field"><span class="lab">Faktor</span>
+        <div class="chips">${FACTORS.map(f => `<button class="chip fac" data-act="ftype" data-f="${f.id}" aria-pressed="${sh.ftype === f.id}">${esc(f.title)}</button>`).join('')}</div></div>
+      <div class="field"><label for="ts">Zeitpunkt</label><input type="datetime-local" id="ts" value="${dtLocal(sh.ts)}"></div>
+      ${factorFields(sh)}
+      <div class="field"><label for="note">Notiz (optional)</label><textarea id="note" placeholder="z. B. Prüfungswoche">${esc(sh.note)}</textarea></div>
+      <button class="btn block" data-act="save">Sichern</button>
+      ${deleteButtons(sh)}`;
+  } else {
+    inner = `<div class="sheet-head"><h1>${sh.id ? 'Beschwerde bearbeiten' : 'Neue Beschwerde'}</h1><button class="link" data-act="close">Abbrechen</button></div>
+      <div class="field"><span class="lab">Beschwerde</span>
+        <div class="chips">${SYMS.map(s => `<button class="chip sym" data-act="symtype" data-type="${s.id}" aria-pressed="${sh.type === s.id}">${esc(s.title)}</button>`).join('')}</div></div>
+      <div class="field"><label for="ts">Zeitpunkt</label><input type="datetime-local" id="ts" value="${dtLocal(sh.ts)}"></div>
+      <div class="field"><span class="lab">Stärke (1 = sehr leicht, 5 = sehr stark)</span>
+        <div class="seg">${[1, 2, 3, 4, 5].map(n => `<button data-act="sev" data-n="${n}" aria-pressed="${sh.severity === n}">${n}</button>`).join('')}</div>
+        <div class="hint">${SEVERITY[sh.severity]}</div></div>
+      <div class="field"><label for="note">Notiz (optional)</label><textarea id="note" placeholder="z. B. nach dem Essen, dauert an">${esc(sh.note)}</textarea></div>
+      <button class="btn block" data-act="save">Sichern</button>
+      ${deleteButtons(sh)}`;
+  }
+  $('overlay').innerHTML = `<div class="scrim" id="scrim"><div class="sheet" role="dialog" aria-modal="true">${inner}</div></div>`;
+  $('fab').hidden = true;
+}
+
+function commitInput() {
+  const sh = state.sheet;
+  const parts = sh.input.split(',').map(s => s.trim()).filter(Boolean);
+  for (const p of parts) if (!sh.foods.some(f => f.toLowerCase() === p.toLowerCase())) sh.foods.push(p);
+  sh.input = '';
+}
+
+function syncDraft() {
+  const sh = state.sheet; if (!sh) return;
+  const ts = $('ts'); if (ts && ts.value) sh.ts = new Date(ts.value).getTime();
+  const note = $('note'); if (note) sh.note = note.value;
+  const inp = $('food-input'); if (inp) sh.input = inp.value;
+  const fv = $('fval'); if (fv) sh.value = num(fv.value);
+  const ft = $('ftext'); if (ft) sh.text = ft.value;
+}
+
+async function repeatMeal(src) {
+  const ts = newEntryTs();
+  const entry = { id: newId(), kind: 'meal', ts, category: src.category, foods: [...src.foods], note: src.note || '' };
+  if (await saveEntry(entry)) {
+    if (state.tab === 'today') state.day = startOfDay(ts);
+    closeSheet();
+    toast('Mahlzeit eingetragen', { label: 'Rückgängig', fn: () => removeEntry(entry.id) });
+  }
+}
+
+async function saveSheet() {
+  const sh = state.sheet;
+  syncDraft();
+  const ts = sh.ts;
+  const note = (sh.note || '').trim();
+  let entry;
+  if (sh.kind === 'meal') {
+    commitInput();
+    if (!sh.foods.length) { toast('Bitte mindestens ein Lebensmittel eintragen.'); renderSheet(); return; }
+    entry = { id: sh.id || newId(), kind: 'meal', ts, category: sh.category, foods: sh.foods, note };
+  } else if (sh.kind === 'factor') {
+    const f = sh.ftype, text = (sh.text || '').trim();
+    if (f === 'med' && !text) { toast('Bitte das Medikament eintragen.'); return; }
+    if ((f === 'sleep' || f === 'sport') && !(sh.value > 0)) { toast(f === 'sleep' ? 'Bitte die Schlafdauer eintragen.' : 'Bitte die Dauer eintragen.'); return; }
+    entry = { id: sh.id || newId(), kind: 'factor', ts, ftype: f, value: (f === 'stress' || f === 'sleep' || f === 'sport') ? sh.value : null, text, note };
+  } else {
+    entry = { id: sh.id || newId(), kind: 'symptom', ts, type: sh.type, severity: sh.severity, note };
+  }
+  if (await saveEntry(entry)) {
+    if (state.tab === 'today') state.day = startOfDay(ts);
+    closeSheet();
+    toast('Gesichert');
+  }
+}
+
+/* ---------- Export ---------- */
+function exportEntries() {
+  const from = rangeStart(state.exportDays, Date.now());
+  return state.entries.filter(e => e.ts >= from);
+}
+
+async function saveFile(filename, data) {
+  const type = filename.endsWith('.pdf') ? 'application/pdf' : filename.endsWith('.csv') ? 'text/csv;charset=utf-8'
+    : filename.endsWith('.json') ? 'application/json' : 'text/plain';
+  const blob = new Blob([data], { type });
+  try {
+    const file = new File([blob], filename, { type });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: filename }); return; }
+  } catch (e) { if (e && e.name === 'AbortError') return; }
+  try {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  } catch (e) { toast('Die Datei konnte nicht gespeichert werden.'); }
+}
+
+function buildPdf(jpegs, w, h, PW, PH) {
+  const enc = t => new TextEncoder().encode(t);
+  const chunks = []; let len = 0; const offs = [];
+  const push = d => { const u = typeof d === 'string' ? enc(d) : d; chunks.push(u); len += u.length; };
+  const n = jpegs.length;
+  const obj = (id, fn) => { offs[id] = len; push(id + ' 0 obj\n'); fn(); push('\nendobj\n'); };
+  push('%PDF-1.4\n');
+  obj(1, () => push('<< /Type /Catalog /Pages 2 0 R >>'));
+  obj(2, () => push('<< /Type /Pages /Kids [' + jpegs.map((_, i) => (3 + 3 * i) + ' 0 R').join(' ') + '] /Count ' + n + ' >>'));
+  jpegs.forEach((j, i) => {
+    const pid = 3 + 3 * i, cid = 4 + 3 * i, iid = 5 + 3 * i;
+    obj(pid, () => push('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + PW + ' ' + PH + '] /Resources << /XObject << /Im0 ' + iid + ' 0 R >> >> /Contents ' + cid + ' 0 R >>'));
+    const content = 'q ' + PW + ' 0 0 ' + PH + ' 0 0 cm /Im0 Do Q';
+    obj(cid, () => push('<< /Length ' + content.length + ' >>\nstream\n' + content + '\nendstream'));
+    obj(iid, () => {
+      push('<< /Type /XObject /Subtype /Image /Width ' + w + ' /Height ' + h + ' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ' + j.length + ' >>\nstream\n');
+      push(j); push('\nendstream');
+    });
+  });
+  const xref = len, total = 3 * n + 3;
+  push('xref\n0 ' + total + '\n0000000000 65535 f \n');
+  for (let id = 1; id < total; id++) push(String(offs[id]).padStart(10, '0') + ' 00000 n \n');
+  push('trailer\n<< /Size ' + total + ' /Root 1 0 R >>\nstartxref\n' + xref + '\n%%EOF');
+  const out = new Uint8Array(len); let p = 0;
+  for (const c of chunks) { out.set(c, p); p += c.length; }
+  return out;
+}
+
+function makePdf(entries) {
+  const S = 2, PW = 595, PH = 842, M = 48, W = PW - 2 * M;
+  const FONT = '-apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif';
+  const now = Date.now();
+  const pages = [];
+  let cv, cx, y;
+  const newPage = () => {
+    cv = document.createElement('canvas'); cv.width = PW * S; cv.height = PH * S;
+    cx = cv.getContext('2d'); cx.scale(S, S);
+    cx.fillStyle = '#ffffff'; cx.fillRect(0, 0, PW, PH); cx.textBaseline = 'top';
+    pages.push(cv); y = M;
+  };
+  const ensure = h => { if (y + h > PH - M - 14) newPage(); };
+  const setFont = o => { cx.font = (o.bold ? '700 ' : '400 ') + (o.size || 11) + 'px ' + FONT; cx.fillStyle = o.color || '#14201a'; cx.textAlign = 'left'; };
+  const wrap = (text, maxW) => {
+    const lines = []; let cur = '';
+    for (const word of String(text).split(' ')) {
+      const t = cur ? cur + ' ' + word : word;
+      if (cur && cx.measureText(t).width > maxW) { lines.push(cur); cur = word; } else cur = t;
+    }
+    if (cur) lines.push(cur);
+    return lines;
+  };
+  const line = (text, o = {}) => {
+    const size = o.size || 11, indent = o.indent || 0, lh = size * 1.3;
+    setFont(o);
+    const parts = wrap(text, W - indent);
+    ensure(parts.length * lh);
+    setFont(o);
+    parts.forEach((p, i) => cx.fillText(p, M + indent, y + i * lh));
+    y += parts.length * lh + (o.gap === undefined ? 4 : o.gap);
+  };
+  const heading = t => { y += 10; ensure(40); line(t, { size: 14, bold: true, gap: 6, color: '#1b7a5a' }); };
+
+  newPage();
+  const first = entries.length ? entries[0].ts : now;
+  const last = entries.length ? entries[entries.length - 1].ts : now;
+  const sum = symptomSummary(entries, '');
+  const meals = entries.filter(e => e.kind === 'meal').length;
+
+  line('Ernährungstagebuch', { size: 22, bold: true, gap: 2 });
+  line('Arztbericht', { size: 13, color: '#5a6962', gap: 2 });
+  line('Zeitraum: ' + fmtDate(first) + ' bis ' + fmtDate(last) + '   |   erstellt am ' + fmtDate(now), { size: 10, color: '#5a6962', gap: 10 });
+
+  if (!entries.length) { line('Keine Einträge im gewählten Zeitraum.'); }
+  else {
+    heading('Zusammenfassung');
+    line('Tage mit Einträgen: ' + sum.trackedDays + '   |   Mahlzeiten: ' + meals + '   |   Beschwerden: ' + sum.total);
+    line('Tage mit Beschwerden: ' + sum.symDays + ' von ' + sum.trackedDays + (sum.trackedDays ? ' (' + Math.round(100 * sum.symDays / sum.trackedDays) + ' %)' : ''));
+    if (sum.byType.length) {
+      heading('Beschwerden nach Art');
+      sum.byType.forEach(t => line(t.title + ': ' + t.count + '×, durchschnittliche Stärke ' + fmtNum(t.avg, 1) + ', stärkste ' + t.max + '/5', { indent: 8 }));
+    }
+
+    const spanStart = Math.max(startOfDay(first), startOfDay(now) - 179 * 24 * HOUR);
+    const days = dayList(spanStart, last);
+    const series = dailySeries(entries, days, '');
+    if (sum.total) {
+      heading('Verlauf: stärkste Beschwerde pro Tag');
+      const ch = 110, cw = W - 24, x0 = M + 24;
+      ensure(ch + 34);
+      cx.strokeStyle = '#d2dcd7'; cx.lineWidth = 0.5;
+      for (let v = 1; v <= 5; v++) {
+        const gy = y + ch - (v / 5) * ch;
+        cx.beginPath(); cx.moveTo(x0, gy); cx.lineTo(x0 + cw, gy); cx.stroke();
+        cx.font = '400 8px ' + FONT; cx.fillStyle = '#64736c'; cx.textAlign = 'right';
+        cx.fillText(String(v), x0 - 6, gy - 4);
+      }
+      const slot = cw / series.length, bw = Math.max(1.2, Math.min(9, slot * 0.7));
+      cx.fillStyle = '#b8324d';
+      series.forEach((sr, i) => {
+        if (!sr.max) return;
+        const bh = (sr.max / 5) * ch;
+        cx.fillRect(x0 + i * slot + (slot - bw) / 2, y + ch - bh, bw, bh);
+      });
+      cx.strokeStyle = '#64736c'; cx.lineWidth = 0.8;
+      cx.beginPath(); cx.moveTo(x0, y + ch); cx.lineTo(x0 + cw, y + ch); cx.stroke();
+      cx.font = '400 8px ' + FONT; cx.fillStyle = '#64736c';
+      cx.textAlign = 'left'; cx.fillText(fmtShort(series[0].day), x0, y + ch + 4);
+      cx.textAlign = 'right'; cx.fillText(fmtShort(series[series.length - 1].day), x0 + cw, y + ch + 4);
+      cx.textAlign = 'left';
+      y += ch + 24;
+    }
+
+    const single = analyze(entries, 3 * HOUR, '', now, 'single');
+    const pairs = analyze(entries, 3 * HOUR, '', now, 'pair');
+    heading('Auffällige Lebensmittel (Beschwerden innerhalb von 3 Std.)');
+    line('Vergleichsbasis: nach ' + Math.round(single.baseline * 100) + ' % aller ausgewerteten Mahlzeiten (' + single.mealCount + ') folgten Beschwerden.', { size: 10, color: '#5a6962' });
+    const top = single.stats.filter(st => st.eaten >= 2 && st.followed > 0).slice(0, 10);
+    if (!top.length) line('Noch keine Lebensmittel mit mindestens 2 Einträgen und Beschwerden danach.', { indent: 8 });
+    top.forEach(st => line(st.food + ': ' + st.followed + ' von ' + st.eaten + ' Mahlzeiten (' + Math.round(st.rate * 100) + ' %), durchschnittliche Stärke ' + fmtNum(st.avgSeverity, 1), { indent: 8 }));
+    const topPairs = pairs.stats.filter(st => st.eaten >= 2 && st.followed > 0).slice(0, 6);
+    if (topPairs.length) {
+      heading('Auffällige Kombinationen');
+      topPairs.forEach(st => line(st.food + ': ' + st.followed + ' von ' + st.eaten + ' Mahlzeiten (' + Math.round(st.rate * 100) + ' %)', { indent: 8 }));
+    }
+
+    const imp = factorImpact(entries, '');
+    if (imp.length) {
+      heading('Einflussfaktoren');
+      imp.forEach(x => line(x.label + ': an ' + x.daysWith + ' Tag(en) Beschwerden an ' + x.symWith + ' (' + Math.round(x.rateWith * 100) + ' %), sonst ' + Math.round(x.rateWithout * 100) + ' % (' + x.daysWithout + ' Tage)', { indent: 8 }));
+    }
+    line('Hinweis: Die Auswertung ist eine Statistik der eigenen Einträge und keine Diagnose. Bei wenigen Einträgen sind die Werte nur grobe Hinweise.', { size: 9, color: '#5a6962', gap: 6 });
+
+    newPage();
+    line('Tagesprotokoll', { size: 16, bold: true, gap: 6 });
+    let day = null;
+    for (const e of entries) {
+      const d = startOfDay(e.ts);
+      if (d !== day) { day = d; y += 8; ensure(30); line(longDay(d), { size: 12, bold: true, gap: 4 }); }
+      if (e.kind === 'symptom') line(entryText(e), { indent: 8, bold: true, color: '#b8324d' });
+      else if (e.kind === 'factor') line(entryText(e), { indent: 8, color: '#6b4fb3' });
+      else line(entryText(e), { indent: 8 });
+    }
+  }
+
+  pages.forEach((c, i) => {
+    const g = c.getContext('2d');
+    g.setTransform(S, 0, 0, S, 0, 0); g.textBaseline = 'top';
+    g.font = '400 8px ' + FONT; g.fillStyle = '#78827d';
+    g.textAlign = 'left'; g.fillText('Ernährungstagebuch', M, PH - 28);
+    g.textAlign = 'right'; g.fillText('Seite ' + (i + 1) + ' von ' + pages.length, PW - M, PH - 28);
+  });
+  const jpegs = pages.map(c => {
+    const b64 = c.toDataURL('image/jpeg', 0.9).split(',')[1];
+    const bin = atob(b64), u = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    return u;
+  });
+  return buildPdf(jpegs, PW * S, PH * S, PW, PH);
+}
+
+/* ---------- Ereignisse ---------- */
+document.addEventListener('click', async ev => {
+  if (ev.target.id === 'scrim') { closeSheet(); return; }
+  const el = ev.target.closest('[data-act]');
+  if (!el) return;
+  const act = el.dataset.act, sh = state.sheet;
+  switch (act) {
+    case 'tab': state.tab = el.dataset.tab; render(); window.scrollTo(0, 0); break;
+    case 'prev': state.day = startOfDay(state.day - 12 * HOUR); render(); break;
+    case 'next': state.day = startOfDay(state.day + 36 * HOUR); render(); break;
+    case 'edit': { const e = state.entries.find(x => x.id === el.dataset.id); if (e) openSheet(e.kind, e); break; }
+    case 'close': closeSheet(); break;
+    case 'new-meal': openSheet('meal'); break;
+    case 'new-sym': openSheet('symptom'); break;
+    case 'new-fac': openSheet('factor'); break;
+    case 'repeat': { const m = state.entries.find(x => x.id === el.dataset.id); if (m) await repeatMeal(m); break; }
+    case 'repeat-this': { syncDraft(); commitInput(); if (sh.foods.length) await repeatMeal({ category: sh.category, foods: sh.foods, note: sh.note }); break; }
+    case 'cat': syncDraft(); sh.category = el.dataset.cat; renderSheet(); break;
+    case 'symtype': syncDraft(); sh.type = el.dataset.type; renderSheet(); break;
+    case 'sev': syncDraft(); sh.severity = Number(el.dataset.n); renderSheet(); break;
+    case 'ftype': { syncDraft(); const d = factorDefaults(el.dataset.f); sh.ftype = el.dataset.f; sh.value = d.value; sh.text = d.text; renderSheet(); break; }
+    case 'fval': syncDraft(); sh.value = Number(el.dataset.n); renderSheet(); break;
+    case 'cyc': syncDraft(); sh.text = el.dataset.c; renderSheet(); break;
+    case 'commit': syncDraft(); commitInput(); renderSheet(); { const i = $('food-input'); if (i) i.focus(); } break;
+    case 'addfood': syncDraft(); { const f = el.dataset.food; if (!sh.foods.some(x => x.toLowerCase() === f.toLowerCase())) sh.foods.push(f); } renderSheet(); break;
+    case 'rmfood': syncDraft(); sh.foods = sh.foods.filter(f => f !== el.dataset.food); renderSheet(); break;
+    case 'save': await saveSheet(); break;
+    case 'del': syncDraft(); sh.confirm = true; renderSheet(); break;
+    case 'del-yes': if (await removeEntry(sh.id)) { closeSheet(); toast('Gelöscht'); } break;
+    case 'min-': state.minCount = Math.max(1, state.minCount - 1); render(); break;
+    case 'min+': state.minCount = Math.min(10, state.minCount + 1); render(); break;
+    case 'combo': state.combo = el.dataset.m; render(); break;
+    case 'chartday': { const i = Number(el.dataset.i); state.chartSel = state.chartSel === i ? null : i; render(); break; }
+    case 'backup': await saveFile('ernaehrungstagebuch-sicherung-' + dateInputValue(Date.now()) + '.json', JSON.stringify({ app: 'ernaehrungstagebuch', version: 1, exported: Date.now(), entries: state.entries }, null, 1)); break;
+    case 'restore': { const f = $('imp'); if (f) { f.value = ''; f.click(); } break; }
+    case 'csv': await saveFile('ernaehrungstagebuch.csv', buildCsv(exportEntries())); break;
+    case 'pdf': {
+      let data;
+      try { data = makePdf(exportEntries()); } catch (e) { toast('Der Bericht konnte nicht erstellt werden.'); break; }
+      await saveFile('arztbericht-ernaehrungstagebuch.pdf', data); break;
+    }
+    case 'copy': {
+      const text = buildText(exportEntries()) || 'Keine Einträge im gewählten Zeitraum.';
+      try { await navigator.clipboard.writeText(text); toast('Text kopiert'); }
+      catch (e) { toast('Kopieren wurde vom Browser blockiert.'); }
+      break;
+    }
+  }
+});
+
+document.addEventListener('input', ev => {
+  const sh = state.sheet;
+  if (sh && sh.kind === 'meal' && ev.target.id === 'food-input') {
+    sh.input = ev.target.value;
+    const box = $('sugg'); if (box) box.innerHTML = suggestionsHtml(sh);
+  }
+});
+document.addEventListener('keydown', ev => {
+  if (ev.target.id === 'food-input' && ev.key === 'Enter') {
+    ev.preventDefault(); syncDraft(); commitInput(); renderSheet(); const i = $('food-input'); if (i) i.focus();
+  }
+  if (ev.key === 'Escape' && state.sheet) closeSheet();
+});
+document.addEventListener('change', ev => {
+  const id = ev.target.id;
+  if (id === 'daypick' && ev.target.value) { const [y, m, d] = ev.target.value.split('-').map(Number); state.day = new Date(y, m - 1, d).getTime(); render(); }
+  if (id === 'win') { state.win = Number(ev.target.value); render(); }
+  if (id === 'symf') { state.symFilter = ev.target.value; render(); }
+  if (id === 'cr') { state.chartDays = Number(ev.target.value); state.chartSel = null; render(); }
+  if (id === 'exr') { state.exportDays = Number(ev.target.value); }
+  if (id === 'rem-on') { state.remind.on = ev.target.checked; saveRemind(); }
+  if (id === 'rem-time' && ev.target.value) { const [h, m] = ev.target.value.split(':').map(Number); state.remind.min = h * 60 + m; saveRemind(); }
+});
+$('fab').addEventListener('click', () => openSheet('choose'));
+$('imp').addEventListener('change', async ev => {
+  const file = ev.target.files && ev.target.files[0];
+  if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    const list = Array.isArray(data) ? data : data.entries;
+    if (!Array.isArray(list)) throw new Error('format');
+    const ok = list.filter(e => e && typeof e.id === 'string' && KINDS.includes(e.kind) && typeof e.ts === 'number');
+    if (!ok.length) { toast('In der Datei wurden keine Einträge gefunden.'); return; }
+    const byId = new Map(lsRead().map(e => [e.id, e]));
+    ok.forEach(e => byId.set(e.id, e));
+    const merged = [...byId.values()].sort((a, b) => a.ts - b.ts);
+    lsWrite(merged); state.entries = merged; render();
+    toast(ok.length + ' Einträge eingespielt');
+  } catch (e) { toast('Die Datei konnte nicht gelesen werden.'); }
+});
+if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); }); }
+
+render();
+initStore();
+</script>
+</body>
+</html>
